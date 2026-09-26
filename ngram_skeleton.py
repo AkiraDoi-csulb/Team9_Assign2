@@ -144,20 +144,49 @@ class NgramModelWithInterpolation(NgramModel):
     ''' An n-gram model with interpolation '''
 
     def __init__(self, n, k):
-        pass
+        self.n = n
+        self.k = k
+        self.models = [NgramModel(i, k) for i in range(n + 1)]
+        self.lambdas = [1 / (n + 1)] * (n + 1) 
+    def set_lambdas(self, lambdas):
+        if len(lambdas) != self.n + 1:
+            raise ValueError(f"Expected {self.n + 1}")
+        self.lambdas = lambdas
 
     def get_vocab(self):
-        pass
+        vocab = set()
+        for model in self.models:
+            vocab.update(model.get_vocab())
+        return vocab
 
     def update(self, text):
-        pass
+        for model in self.models:
+            model.update(text)
 
     def prob(self, context, char):
-        pass
+        interpolated_prob = 0.0
+        for i, model in enumerate(self.models):
+            # get the last i characters of the context for the i-th order model
+            sub_context = context[-i:] if i > 0 else ''
+            interpolated_prob += self.lambdas[i] * model.prob(sub_context, char)
+        return interpolated_prob
 
 ################################################################################
 # Part 3: Your N-Gram Model Experimentation
 ################################################################################
 
 if __name__ == '__main__':
-    pass
+    # Test 1: Order 1 with no smoothing
+    m1 = NgramModelWithInterpolation(1, 0)
+    m1.update('abab')
+    print(m1.prob('a', 'a')) # Expected: 0.25
+    print(m1.prob('a', 'b')) # Expected: 0.75
+
+    # Test 2: Order 2 with Add-1 smoothing
+    m2 = NgramModelWithInterpolation(2, 1)
+    m2.update('abab')
+    m2.update('abcd')
+    print(m2.prob('~a', 'b')) # Expected: 0.4682539682539682
+    print(m2.prob('ba', 'b')) # Expected: 0.4349206349206349
+    print(m2.prob('~c', 'd')) # Expected: 0.27222222222222225
+    print(m2.prob('bc', 'd')) # Expected: 0.3222222222222222
