@@ -1,4 +1,4 @@
-import math, random
+import math, random, os
 from collections import defaultdict
 
 # Run code -> python3 -> from ngram_skeleton import *
@@ -166,7 +166,6 @@ class NgramModelWithInterpolation(NgramModel):
     def prob(self, context, char):
         interpolated_prob = 0.0
         for i, model in enumerate(self.models):
-            # get the last i characters of the context for the i-th order model
             sub_context = context[-i:] if i > 0 else ''
             interpolated_prob += self.lambdas[i] * model.prob(sub_context, char)
         return interpolated_prob
@@ -176,17 +175,166 @@ class NgramModelWithInterpolation(NgramModel):
 ################################################################################
 
 if __name__ == '__main__':
-    # Test 1: Order 1 with no smoothing
+    print("Ngram Model with n=1, k=0")
     m1 = NgramModelWithInterpolation(1, 0)
     m1.update('abab')
-    print(m1.prob('a', 'a')) # Expected: 0.25
-    print(m1.prob('a', 'b')) # Expected: 0.75
+    print(m1.prob('a', 'a')) 
+    print(m1.prob('a', 'b')) 
 
-    # Test 2: Order 2 with Add-1 smoothing
+    print("Ngram Model with n=2, k=1")
     m2 = NgramModelWithInterpolation(2, 1)
     m2.update('abab')
     m2.update('abcd')
-    print(m2.prob('~a', 'b')) # Expected: 0.4682539682539682
-    print(m2.prob('ba', 'b')) # Expected: 0.4349206349206349
-    print(m2.prob('~c', 'd')) # Expected: 0.27222222222222225
-    print(m2.prob('bc', 'd')) # Expected: 0.3222222222222222
+    print(m2.prob('~a', 'b')) 
+    print(m2.prob('ba', 'b')) 
+    print(m2.prob('~c', 'd')) 
+    print(m2.prob('bc', 'd')) 
+    print("Setting lambdas to [0.1, 0.2, 0.7] for interpolation...")
+    m2.set_lambdas([0.1, 0.2, 0.7])
+    print(m2.prob('~a', 'b')) 
+    print(m2.prob('ba', 'b')) 
+    print(m2.prob('~c', 'd')) 
+    print(m2.prob('bc', 'd'))
+
+    print("Ngram Model with n=3, k=0.5")
+    m3 = NgramModelWithInterpolation(3, 0.5) 
+    m3.update('abab')
+    print(m3.prob('~a', 'b'))
+    print(m3.prob('ba', 'b'))
+    print(m3.prob('~c', 'd'))
+    print(m3.prob('bc', 'd'))
+    print("Setting k back to 1 for smoothing...")
+    m3.k = 1
+    print(m3.prob('~a', 'b'))
+    print(m3.prob('ba', 'b'))
+    print(m3.prob('~c', 'd'))
+    print(m3.prob('bc', 'd'))
+    print("Setting lambdas to [0.05, 0.15, 0.30, 0.50] for interpolation...") 
+    m3.set_lambdas([0.05, 0.15, 0.30, 0.50])
+    print(m3.prob('~a', 'b'))
+    print(m3.prob('ba', 'b'))
+    print(m3.prob('~c', 'd'))
+    print(m3.prob('bc', 'd'))
+
+
+    def update_model_from_file_lines(model, path):
+        with open(path, encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                cleaned = line.strip()
+                if cleaned:
+                    model.update(cleaned)
+        return model
+
+    def create_cities_ngrams(folderpath,model_class, n, k):
+        model = model_class(n, k)
+        for filename in os.listdir(folderpath):
+            if filename in COUNTRY_CODES:
+                update_model_from_file_lines(model, os.path.join(folderpath, filename))
+
+        return model
+
+    def create_country_model(file_path, model_class, n, k, lambdas=None):
+        model = model_class(n, k)
+        if lambdas and hasattr(model, 'set_lambdas'):
+            model.set_lambdas(lambdas)
+        update_model_from_file_lines(model, file_path)
+        return model
+
+    def predict_country(city_name, country_models):
+        best_country = None
+        best_log_likelihood = float('-inf')
+
+        for code, model in country_models.items():
+            log_likelihood = 0.0
+            pairs = ngrams(model.n, city_name)
+
+            for context, char in pairs:
+                p = model.prob(context, char)
+                if p > 0:
+                    log_likelihood += math.log(p)
+                else:
+                    log_likelihood += float('-inf')
+
+            if log_likelihood > best_log_likelihood:
+                best_log_likelihood = log_likelihood
+                best_country = code
+
+        return best_country if best_country else COUNTRY_CODES[0]
+
+    def evaluate_validation(val_path, country_models):
+        total_samples = 0
+        correct_predictions = 0
+
+        for code in COUNTRY_CODES:
+            val_file = os.path.join(val_path, code)
+            if not os.path.exists(val_file):
+                val_file += '.txt'
+
+            if os.path.exists(val_file):
+                with open(val_file, encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        city = line.strip()
+                        if city:
+                            pred = predict_country(city, country_models)
+                            if pred == code:
+                                correct_predictions += 1
+                            total_samples += 1
+
+        accuracy = (correct_predictions / total_samples) * 100 if total_samples > 0 else 0.0
+        print(f"Validation Accuracy: {accuracy:.2f}% ({correct_predictions}/{total_samples})")
+        return accuracy
+
+    n = 3
+    k = 1
+    lambdas = [0.05, 0.15, 0.30, 0.50] 
+
+    train_path = "cities_train/train" 
+    val_path   = "cities_val/val"
+    output_file     = "test_labels.txt"
+    test_file       = "cities_test.txt"
+
+    country_models = {}
+
+    for code in COUNTRY_CODES:
+        file_path = os.path.join(train_path, code)
+        if not os.path.exists(file_path):
+            file_path += '.txt'
+
+        if os.path.exists(file_path):
+            model = create_country_model(
+                file_path,
+                NgramModelWithInterpolation,
+                n=n,
+                k=k,
+                lambdas = lambdas
+            )
+            country_models[code] = model
+            print(f"Loaded and trained model for country: {code.upper()}")
+        else:
+            print(f"Warning: File for country '{code}' not found at path: {file_path}")
+
+    global_vocab = set()
+    for m in country_models.values():
+        global_vocab.update(m.get_vocab())
+    for m in country_models.values():
+        for sub_m in getattr(m, 'models', [m]):
+            sub_m.vocab = global_vocab
+
+    # 3. Evaluate Validation Set (OUTSIDE the country training loop)
+    if os.path.exists(val_path) or os.path.exists(val_path + ".txt"):
+        print("\n--- Evaluating Model Performance on Validation Set ---")
+        evaluate_validation(val_path, country_models)
+
+    if os.path.exists(test_file):
+            print(f"Generating '{output_file}'...")
+            with open(test_file, encoding='utf-8', errors='ignore') as infile, \
+                open(output_file, 'w', encoding='utf-8') as outfile:
+                for line in infile:
+                    city = line.strip()
+                    if city:
+                        pred = predict_country(city, country_models)
+                        outfile.write(f"{pred}\n")
+            print(f"Saved '{output_file}' in project root.")
+    else:
+            print(f"Error: Target file '{test_file}' not found in current directory.")
+   
