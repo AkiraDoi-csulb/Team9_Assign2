@@ -175,6 +175,21 @@ class NgramModelWithInterpolation(NgramModel):
 ################################################################################
 
 if __name__ == '__main__':
+    #Smoothing
+    print("Smoothing")
+    m = NgramModel(1, 1)
+    m.update('abab')
+    m.update('abcd')
+    print(m.prob('a', 'a'))
+    print(m.prob('a', 'b'))
+    print(m.prob('c', 'd'))
+    print(m.prob('d', 'a'))
+
+
+
+
+
+
     print("Ngram Model with n=1, k=0")
     m1 = NgramModelWithInterpolation(1, 0)
     m1.update('abab')
@@ -225,13 +240,6 @@ if __name__ == '__main__':
                     model.update(cleaned)
         return model
 
-    def create_cities_ngrams(folderpath,model_class, n, k):
-        model = model_class(n, k)
-        for filename in os.listdir(folderpath):
-            if filename in COUNTRY_CODES:
-                update_model_from_file_lines(model, os.path.join(folderpath, filename))
-
-        return model
 
     def create_country_model(file_path, model_class, n, k, lambdas=None):
         model = model_class(n, k)
@@ -320,7 +328,7 @@ if __name__ == '__main__':
         for sub_m in getattr(m, 'models', [m]):
             sub_m.vocab = global_vocab
 
-    # 3. Evaluate Validation Set (OUTSIDE the country training loop)
+
     if os.path.exists(val_path) or os.path.exists(val_path + ".txt"):
         print("\n--- Evaluating Model Performance on Validation Set ---")
         evaluate_validation(val_path, country_models)
